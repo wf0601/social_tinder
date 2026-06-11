@@ -1,0 +1,4 @@
+# Only needed for the live server (`social_tinder serve`).
+# The CLI commands export / json / top run on the stdlib alone.
+fastapi>=0.115
+uvicorn[standard]>=0.30

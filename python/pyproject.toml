@@ -1,0 +1,20 @@
+[project]
+name = "social-tinder"
+version = "0.1.0"
+description = "Keyword chemistry from social listening — Brandwatch keyword co-occurrence networks."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+server = ["fastapi>=0.115", "uvicorn[standard]>=0.30"]
+
+[project.scripts]
+social-tinder = "social_tinder.__main__:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["social_tinder"]
