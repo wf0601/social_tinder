@@ -31,7 +31,9 @@ class KeywordNode:
     mentions: int  # number of mentions containing this keyword
     reach: int  # summed reach across those mentions
     sentiment: float  # net sentiment in [-1, 1]
-    cluster: int  # community id from label propagation
+    cluster: int  # community id from Louvain modularity clustering
+    influence: float = 0.0  # weighted PageRank (sums to 1 across nodes)
+    bridge: float = 0.0  # normalized betweenness centrality in [0, 1]
 
     def to_dict(self) -> dict:
         return {
@@ -40,6 +42,8 @@ class KeywordNode:
             "reach": self.reach,
             "sentiment": self.sentiment,
             "cluster": self.cluster,
+            "influence": self.influence,
+            "bridge": self.bridge,
         }
 
 
@@ -50,6 +54,7 @@ class KeywordEdge:
     cooccurrences: int  # mentions containing BOTH keywords
     strength: float  # Jaccard index in [0, 1]
     pmi: float  # pointwise mutual information
+    llr: float = 0.0  # log-likelihood ratio (Dunning G²) — edge significance
 
     def to_dict(self) -> dict:
         return {
@@ -58,6 +63,7 @@ class KeywordEdge:
             "cooccurrences": self.cooccurrences,
             "strength": self.strength,
             "pmi": self.pmi,
+            "llr": self.llr,
         }
 
 
@@ -69,6 +75,7 @@ class NetworkQuery:
     min_strength: float = 0.0
     min_cooccurrences: int = 1
     min_mentions: int = 1
+    min_llr: float = 0.0  # drop edges below this significance (G²)
     platforms: Optional[list[Platform]] = None
     max_nodes: int = 120
 
@@ -78,6 +85,7 @@ class NetworkQuery:
             "minStrength": self.min_strength,
             "minCooccurrences": self.min_cooccurrences,
             "minMentions": self.min_mentions,
+            "minLLR": self.min_llr,
             "platforms": self.platforms,
             "maxNodes": self.max_nodes,
         }

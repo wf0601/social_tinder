@@ -24,6 +24,8 @@ def _add_filter_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--min-strength", type=float, default=0.04)
     p.add_argument("--min-cooccurrences", type=int, default=3)
     p.add_argument("--min-mentions", type=int, default=5)
+    p.add_argument("--min-llr", type=float, default=0.0,
+                   help="drop edges below this significance (Dunning G²)")
     p.add_argument("--max-nodes", type=int, default=80)
     p.add_argument("--platforms", default=None, help="comma-separated platform list")
     p.add_argument("--search", default=None, help="topic (live Brandwatch only)")
@@ -35,6 +37,7 @@ def _query(args: argparse.Namespace) -> NetworkQuery:
         min_strength=args.min_strength,
         min_cooccurrences=args.min_cooccurrences,
         min_mentions=args.min_mentions,
+        min_llr=args.min_llr,
         max_nodes=args.max_nodes,
         platforms=[p for p in args.platforms.split(",") if p] if args.platforms else None,
     )
@@ -85,12 +88,22 @@ def cmd_json(args: argparse.Namespace) -> int:
 
 def cmd_top(args: argparse.Namespace) -> int:
     net = _build(args)
+    clusters = len({n.cluster for n in net.nodes})
     print(f"source={net.source}  mentions={net.total_mentions}  "
-          f"nodes={len(net.nodes)}  edges={len(net.edges)}")
-    print("\nStrongest keyword connections:")
-    for e in sorted(net.edges, key=lambda x: -x.strength)[: args.limit]:
+          f"nodes={len(net.nodes)}  edges={len(net.edges)}  communities={clusters}")
+
+    print("\nStrongest connections (by significance, G²):")
+    for e in sorted(net.edges, key=lambda x: -x.llr)[: args.limit]:
         print(f"  {e.source:>16}  <->  {e.target:<16}  "
-              f"strength={e.strength:.3f}  co={e.cooccurrences:<4}  pmi={e.pmi:.2f}")
+              f"llr={e.llr:7.1f}  strength={e.strength:.3f}  co={e.cooccurrences}")
+
+    print("\nMost influential keywords (PageRank):")
+    for n in sorted(net.nodes, key=lambda x: -x.influence)[:8]:
+        print(f"  {n.id:>16}  influence={n.influence:.4f}  community={n.cluster}")
+
+    print("\nTop bridge keywords (betweenness — connect communities):")
+    for n in sorted(net.nodes, key=lambda x: -x.bridge)[:8]:
+        print(f"  {n.id:>16}  bridge={n.bridge:.4f}  community={n.cluster}")
     return 0
 
 

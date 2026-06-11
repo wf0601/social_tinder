@@ -24,6 +24,7 @@ def network(
     minStrength: float = 0.0,
     minCooccurrences: int = 1,
     minMentions: int = 1,
+    minLLR: float = 0.0,
     maxNodes: int = 120,
     platforms: str | None = None,
 ) -> JSONResponse:
@@ -32,6 +33,7 @@ def network(
         min_strength=minStrength,
         min_cooccurrences=minCooccurrences,
         min_mentions=minMentions,
+        min_llr=minLLR,
         max_nodes=maxNodes,
         platforms=[p for p in platforms.split(",") if p] if platforms else None,
     )

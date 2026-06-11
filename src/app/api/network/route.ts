@@ -19,6 +19,7 @@ export async function GET(req: NextRequest) {
     minStrength: num(sp.get("minStrength")),
     minCooccurrences: num(sp.get("minCooccurrences")),
     minMentions: num(sp.get("minMentions")),
+    minLLR: num(sp.get("minLLR")),
     maxNodes: num(sp.get("maxNodes")),
     platforms: (sp.get("platforms")?.split(",").filter(Boolean) as Platform[]) || undefined,
   };

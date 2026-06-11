@@ -41,8 +41,12 @@ export interface KeywordNode {
   reach: number;
   /** Net sentiment in [-1, 1]: (positive - negative) / total. */
   sentiment: number;
-  /** Theme/cluster id, assigned by community detection. */
+  /** Community id, assigned by Louvain modularity clustering. */
   cluster: number;
+  /** Weighted PageRank — how central/influential the keyword is (sums to ~1). */
+  influence: number;
+  /** Normalized betweenness in [0, 1] — "bridge" keywords connecting clusters. */
+  bridge: number;
 }
 
 /** A weighted edge between two co-occurring keywords. */
@@ -62,6 +66,11 @@ export interface KeywordEdge {
    * more than chance; useful for surfacing surprising associations.
    */
   pmi: number;
+  /**
+   * Dunning log-likelihood ratio (G²) — statistical significance of the
+   * association. Robust to rare terms; used to prune coincidental edges.
+   */
+  llr: number;
 }
 
 export interface KeywordNetwork {
@@ -85,6 +94,8 @@ export interface NetworkQuery {
   minCooccurrences?: number;
   /** Drop keywords appearing in fewer than this many mentions. */
   minMentions?: number;
+  /** Drop edges below this log-likelihood ratio (significance, G²). */
+  minLLR?: number;
   /** Restrict to these platforms. */
   platforms?: Platform[];
   /** Cap the number of nodes (keeps the top-N by mentions). */

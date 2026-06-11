@@ -1,9 +1,10 @@
 # 🔥 Social Tinder — Python edition
 
-A standalone Python port of Social Tinder. Same engine as the TypeScript app:
+A standalone Python port of Social Tinder. Same analytics as the TypeScript app:
 synthetic (or live Brandwatch) mentions → weighted keyword co-occurrence network
-(**Jaccard strength** + **PMI**) → label-propagation **communities** → interactive
-graph.
+(**Jaccard strength**, **PMI**, **log-likelihood G²**) → **Louvain** communities,
+with each keyword scored by **PageRank** (influence) and **betweenness** (bridge)
+→ interactive graph.
 
 No JavaScript build step. Ships a **FastAPI** app and a **CLI**.
 
@@ -35,8 +36,12 @@ All commands share the same filter flags:
 
 ```
 --min-strength 0.04   --min-cooccurrences 3   --min-mentions 5
---max-nodes 80        --platforms twitter,reddit   --search "electric vehicles"
+--min-llr 20          --max-nodes 80          --platforms twitter,reddit
+--search "electric vehicles"
 ```
+
+`--min-llr` prunes edges below a log-likelihood-ratio (G²) significance
+threshold — the cleanest way to drop coincidental co-occurrences.
 
 ## Live Brandwatch data
 
@@ -58,8 +63,14 @@ from social_tinder import fetch_mentions, build_network, NetworkQuery
 
 mentions, source = fetch_mentions()
 net = build_network(mentions, NetworkQuery(min_strength=0.1, min_mentions=10))
-for e in sorted(net.edges, key=lambda e: -e.strength)[:5]:
-    print(e.source, "<->", e.target, round(e.strength, 3))
+
+# Most significant connections:
+for e in sorted(net.edges, key=lambda e: -e.llr)[:5]:
+    print(e.source, "<->", e.target, "G²=", round(e.llr, 1))
+
+# Keywords that bridge communities (betweenness):
+for n in sorted(net.nodes, key=lambda n: -n.bridge)[:5]:
+    print(n.id, "bridge=", round(n.bridge, 3), "community", n.cluster)
 ```
 
 ## Layout
@@ -68,7 +79,8 @@ for e in sorted(net.edges, key=lambda e: -e.strength)[:5]:
 | --- | --- |
 | `social_tinder/types.py` | dataclasses (`Mention`, `KeywordNode`, `KeywordEdge`, …) |
 | `social_tinder/sample.py` | deterministic synthetic dataset (ports the JS `mulberry32` PRNG) |
-| `social_tinder/network.py` | co-occurrence engine: Jaccard, PMI, clustering |
+| `social_tinder/network.py` | co-occurrence engine: Jaccard, PMI, G², orchestration |
+| `social_tinder/analytics.py` | graph algorithms: PageRank, betweenness, Louvain, LLR |
 | `social_tinder/client.py` | sample ↔ Brandwatch data source (stdlib `urllib`) |
 | `social_tinder/viz.py` | vis-network HTML (interactive + static) |
 | `social_tinder/server.py` | FastAPI app (`/` UI + `/api/network`) |

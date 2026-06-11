@@ -23,7 +23,14 @@ export function clusterColor(cluster: number): string {
 }
 
 type GraphNode = KeywordNode & { x?: number; y?: number };
-type SizeBy = "mentions" | "reach";
+type SizeBy = "mentions" | "reach" | "influence" | "bridge";
+
+type Scaled = {
+  _maxMentions: number;
+  _maxReach: number;
+  _maxInfluence: number;
+  _maxBridge: number;
+};
 
 interface Props {
   data: KeywordNetwork;
@@ -57,8 +64,16 @@ export default function NetworkGraph({ data, sizeBy, onSelect, selectedId }: Pro
   const graphData = useMemo(() => {
     const maxMentions = Math.max(1, ...data.nodes.map((n) => n.mentions));
     const maxReach = Math.max(1, ...data.nodes.map((n) => n.reach));
+    const maxInfluence = Math.max(1e-9, ...data.nodes.map((n) => n.influence));
+    const maxBridge = Math.max(1e-9, ...data.nodes.map((n) => n.bridge));
     return {
-      nodes: data.nodes.map((n) => ({ ...n, _maxMentions: maxMentions, _maxReach: maxReach })),
+      nodes: data.nodes.map((n) => ({
+        ...n,
+        _maxMentions: maxMentions,
+        _maxReach: maxReach,
+        _maxInfluence: maxInfluence,
+        _maxBridge: maxBridge,
+      })),
       links: data.edges.map((e) => ({ ...e })),
     };
   }, [data]);
@@ -83,9 +98,16 @@ export default function NetworkGraph({ data, sizeBy, onSelect, selectedId }: Pro
     return s;
   }, [focusId, adjacency]);
 
-  function nodeSize(n: GraphNode & { _maxMentions: number; _maxReach: number }) {
-    const v = sizeBy === "reach" ? n.reach / n._maxReach : n.mentions / n._maxMentions;
-    return 2 + Math.sqrt(v) * 14;
+  function nodeSize(n: GraphNode & Scaled) {
+    const ratio =
+      sizeBy === "reach"
+        ? n.reach / n._maxReach
+        : sizeBy === "influence"
+          ? n.influence / n._maxInfluence
+          : sizeBy === "bridge"
+            ? n.bridge / n._maxBridge
+            : n.mentions / n._maxMentions;
+    return 2 + Math.sqrt(ratio) * 14;
   }
 
   return (
@@ -111,7 +133,7 @@ export default function NetworkGraph({ data, sizeBy, onSelect, selectedId }: Pro
           onNodeClick={(n: GraphNode) => onSelect(n)}
           onBackgroundClick={() => onSelect(null)}
           nodeCanvasObject={(
-            node: GraphNode & { _maxMentions: number; _maxReach: number },
+            node: GraphNode & Scaled,
             ctx: CanvasRenderingContext2D,
             scale: number,
           ) => {
@@ -143,7 +165,7 @@ export default function NetworkGraph({ data, sizeBy, onSelect, selectedId }: Pro
             ctx.globalAlpha = 1;
           }}
           nodePointerAreaPaint={(
-            node: GraphNode & { _maxMentions: number; _maxReach: number },
+            node: GraphNode & Scaled,
             color: string,
             ctx: CanvasRenderingContext2D,
           ) => {

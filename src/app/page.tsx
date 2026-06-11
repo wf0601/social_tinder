@@ -4,13 +4,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import NetworkGraph, { clusterColor } from "@/components/NetworkGraph";
 import type { KeywordNetwork, KeywordNode, Platform } from "@/lib/brandwatch/types";
 
-type SizeBy = "mentions" | "reach";
+type SizeBy = "mentions" | "reach" | "influence" | "bridge";
 
 interface Filters {
   search: string;
   minStrength: number;
   minCooccurrences: number;
   minMentions: number;
+  minLLR: number;
   maxNodes: number;
   platforms: Platform[];
 }
@@ -20,6 +21,7 @@ const DEFAULTS: Filters = {
   minStrength: 0.04,
   minCooccurrences: 3,
   minMentions: 5,
+  minLLR: 0,
   maxNodes: 80,
   platforms: [],
 };
@@ -27,6 +29,13 @@ const DEFAULTS: Filters = {
 const ALL_PLATFORMS: Platform[] = [
   "twitter", "reddit", "instagram", "tiktok", "youtube", "news", "forum", "blog",
 ];
+
+const SIZE_BY_HELP: Record<SizeBy, string> = {
+  mentions: "Number of posts containing the keyword",
+  reach: "Total audience reached",
+  influence: "Weighted PageRank — how central the keyword is",
+  bridge: "Betweenness — keywords that connect communities",
+};
 
 type NetworkResponse = KeywordNetwork & { source: "sample" | "brandwatch" };
 
@@ -47,6 +56,7 @@ export default function Home() {
       minStrength: String(f.minStrength),
       minCooccurrences: String(f.minCooccurrences),
       minMentions: String(f.minMentions),
+      minLLR: String(f.minLLR),
       maxNodes: String(f.maxNodes),
     });
     if (f.search) p.set("search", f.search);
@@ -93,10 +103,20 @@ export default function Home() {
         strength: e.strength,
         cooccurrences: e.cooccurrences,
         pmi: e.pmi,
+        llr: e.llr,
       }))
       .sort((a, b) => b.strength - a.strength)
       .slice(0, 12);
   }, [data, selected]);
+
+  // Max influence/bridge so the details panel can show 0–100 relative scores.
+  const ranks = useMemo(() => {
+    if (!data || data.nodes.length === 0) return { maxInfluence: 1, maxBridge: 1 };
+    return {
+      maxInfluence: Math.max(1e-9, ...data.nodes.map((n) => n.influence)),
+      maxBridge: Math.max(1e-9, ...data.nodes.map((n) => n.bridge)),
+    };
+  }, [data]);
 
   const clusters = useMemo(() => {
     if (!data) return [];
@@ -156,6 +176,15 @@ export default function Home() {
             onChange={(v) => set("minMentions", v)}
           />
           <Slider
+            label="Min. significance (G²)"
+            value={filters.minLLR}
+            min={0}
+            max={50}
+            step={1}
+            display={filters.minLLR === 0 ? "off" : String(filters.minLLR)}
+            onChange={(v) => set("minLLR", v)}
+          />
+          <Slider
             label="Max. keywords shown"
             value={filters.maxNodes}
             min={10}
@@ -166,12 +195,13 @@ export default function Home() {
           />
 
           <Field label="Size nodes by">
-            <div className="flex gap-2">
-              {(["mentions", "reach"] as SizeBy[]).map((s) => (
+            <div className="grid grid-cols-2 gap-2">
+              {(["mentions", "reach", "influence", "bridge"] as SizeBy[]).map((s) => (
                 <button
                   key={s}
                   onClick={() => setSizeBy(s)}
-                  className={`flex-1 rounded-md border px-2 py-1.5 text-xs capitalize transition ${
+                  title={SIZE_BY_HELP[s]}
+                  className={`rounded-md border px-2 py-1.5 text-xs capitalize transition ${
                     sizeBy === s
                       ? "border-accent bg-accent/15 text-white"
                       : "border-panel-border text-white/60 hover:text-white"
@@ -295,6 +325,16 @@ export default function Home() {
                 color={selected.sentiment > 0.1 ? "#06d6a0" : selected.sentiment < -0.1 ? "#ff5a7e" : undefined}
               />
             </div>
+            <div className="mt-2 grid grid-cols-2 gap-2 text-center">
+              <Stat
+                label="Influence"
+                value={`${Math.round((selected.influence / ranks.maxInfluence) * 100)}`}
+              />
+              <Stat
+                label="Bridge"
+                value={`${Math.round((selected.bridge / ranks.maxBridge) * 100)}`}
+              />
+            </div>
 
             <p className="mt-5 mb-2 text-xs font-semibold uppercase tracking-wide text-white/40">
               Strongest connections
@@ -307,6 +347,7 @@ export default function Home() {
                       const node = data?.nodes.find((n) => n.id === c.other);
                       if (node) setSelected(node);
                     }}
+                    title={`significance G²=${c.llr.toFixed(0)} · PMI=${c.pmi.toFixed(2)}`}
                     className="w-full text-left"
                   >
                     <div className="flex items-baseline justify-between text-sm">

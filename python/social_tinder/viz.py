@@ -130,10 +130,12 @@ function showDetails(id){
   const conns = RAW.edges
     .filter(e => e.source === id || e.target === id)
     .map(e => ({ other: e.source === id ? e.target : e.source,
-                 strength: e.strength, co: e.cooccurrences }))
+                 strength: e.strength, co: e.cooccurrences, llr: e.llr || 0, pmi: e.pmi || 0 }))
     .sort((a,b)=>b.strength-a.strength).slice(0,12);
   const sent = node.sentiment;
   const sentColor = sent > .1 ? '#06d6a0' : sent < -.1 ? '#ff5a7e' : 'inherit';
+  const maxInf = Math.max(1e-9, ...RAW.nodes.map(n => n.influence || 0));
+  const maxBri = Math.max(1e-9, ...RAW.nodes.map(n => n.bridge || 0));
   document.getElementById('details').innerHTML = `
     <div style="display:flex;align-items:center;gap:8px;">
       <span class="dot" style="background:${clusterColor(node.cluster)}"></span>
@@ -144,8 +146,12 @@ function showDetails(id){
       <div class="stat"><div class="v">${compact(node.reach)}</div><div class="k">Reach</div></div>
       <div class="stat"><div class="v" style="color:${sentColor}">${sent>=0?'+':''}${sent.toFixed(2)}</div><div class="k">Sentiment</div></div>
     </div>
+    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:8px;">
+      <div class="stat"><div class="v">${Math.round((node.influence||0)/maxInf*100)}</div><div class="k">Influence</div></div>
+      <div class="stat"><div class="v">${Math.round((node.bridge||0)/maxBri*100)}</div><div class="k">Bridge</div></div>
+    </div>
     <p style="margin:18px 0 6px;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:rgba(255,255,255,.4);font-weight:600;">Strongest connections</p>
-    ${conns.map(c => `<div class="conn" onclick="showDetails('${c.other.replace(/'/g,"\\\\'")}');NETWORK.selectNodes(['${c.other.replace(/'/g,"\\\\'")}'])">
+    ${conns.map(c => `<div class="conn" title="significance G²=${c.llr.toFixed(0)} · PMI=${c.pmi.toFixed(2)}" onclick="showDetails('${c.other.replace(/'/g,"\\\\'")}');NETWORK.selectNodes(['${c.other.replace(/'/g,"\\\\'")}'])">
         <div style="display:flex;justify-content:space-between;font-size:14px;">
           <span style="font-weight:500;">${c.other}</span>
           <span class="muted">${c.co}× together</span></div>
@@ -199,6 +205,8 @@ def interactive_page() -> str:
       <input id="f-co" type="range" min="1" max="30" step="1" value="3" /></div>
     <div class="field"><div class="row"><label>Min. keyword mentions</label><span class="val" id="v-mentions">5</span></div>
       <input id="f-mentions" type="range" min="1" max="50" step="1" value="5" /></div>
+    <div class="field"><div class="row"><label>Min. significance (G²)</label><span class="val" id="v-llr">off</span></div>
+      <input id="f-llr" type="range" min="0" max="50" step="1" value="0" /></div>
     <div class="field"><div class="row"><label>Max. keywords shown</label><span class="val" id="v-max">80</span></div>
       <input id="f-max" type="range" min="10" max="150" step="5" value="80" /></div>
     <div class="field"><label>Communities</label><ul id="legend" class="legend" style="list-style:none;padding:0;margin:0;"></ul></div>
@@ -210,6 +218,7 @@ async function load(){
     minStrength: document.getElementById('f-strength').value,
     minCooccurrences: document.getElementById('f-co').value,
     minMentions: document.getElementById('f-mentions').value,
+    minLLR: document.getElementById('f-llr').value,
     maxNodes: document.getElementById('f-max').value,
   });
   const s = document.getElementById('f-search').value.trim();
@@ -219,11 +228,12 @@ async function load(){
 }
 let t = null;
 function schedule(){ clearTimeout(t); t = setTimeout(load, 250); }
-['f-strength','f-co','f-mentions','f-max'].forEach(id => {
+['f-strength','f-co','f-mentions','f-llr','f-max'].forEach(id => {
   const el = document.getElementById(id);
-  const labelMap = { 'f-strength':'v-strength','f-co':'v-co','f-mentions':'v-mentions','f-max':'v-max' };
+  const labelMap = { 'f-strength':'v-strength','f-co':'v-co','f-mentions':'v-mentions','f-llr':'v-llr','f-max':'v-max' };
   el.addEventListener('input', () => {
-    document.getElementById(labelMap[id]).textContent = el.value;
+    document.getElementById(labelMap[id]).textContent =
+      (id === 'f-llr' && el.value === '0') ? 'off' : el.value;
     schedule();
   });
 });

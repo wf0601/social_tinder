@@ -3,8 +3,9 @@
 Turns a flat list of mentions into a weighted keyword graph:
   - nodes  = keywords
   - edges  = co-occurrence within the same mention
-  - weight = Jaccard "strength" (0..1) plus PMI for surprising pairs
-Communities are found with deterministic label propagation.
+  - weights= Jaccard "strength" (0..1), PMI, and Dunning log-likelihood (G²)
+  - nodes are enriched with PageRank "influence" and betweenness "bridge"
+  - communities come from Louvain modularity maximization
 """
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ import math
 from collections import defaultdict
 from datetime import datetime, timezone
 
+from . import analytics
 from .types import KeywordEdge, KeywordNetwork, KeywordNode, Mention, NetworkQuery
 
 
@@ -74,7 +76,7 @@ def build_network(
         nodes = nodes[: q.max_nodes]
     keep = {n.id for n in nodes}
 
-    # --- Edges: Jaccard + PMI ---
+    # --- Edges: Jaccard + PMI + log-likelihood ratio ---
     edges: list[KeywordEdge] = []
     for (a, b), co in pair_count.items():
         if co < q.min_cooccurrences or a not in keep or b not in keep:
@@ -83,12 +85,17 @@ def build_network(
         strength = co / (ca + cb - co)  # Jaccard
         if strength < q.min_strength:
             continue
+        llr = analytics.log_likelihood_ratio(co, ca, cb, total_mentions)
+        if llr < q.min_llr:
+            continue
         p_ab = co / total_mentions
         p_a = ca / total_mentions
         p_b = cb / total_mentions
         pmi = math.log2(p_ab / (p_a * p_b)) if p_ab > 0 else 0.0
         edges.append(
-            KeywordEdge(source=a, target=b, cooccurrences=co, strength=strength, pmi=pmi)
+            KeywordEdge(
+                source=a, target=b, cooccurrences=co, strength=strength, pmi=pmi, llr=llr
+            )
         )
 
     # Drop isolated nodes when the graph is big enough to warrant it.
@@ -99,7 +106,7 @@ def build_network(
             connected.add(e.target)
         nodes = [n for n in nodes if n.id in connected]
 
-    _assign_clusters(nodes, edges)
+    _enrich(nodes, edges)
 
     return KeywordNetwork(
         nodes=nodes,
@@ -110,44 +117,21 @@ def build_network(
     )
 
 
-def _assign_clusters(nodes: list[KeywordNode], edges: list[KeywordEdge]) -> None:
-    """Deterministic label-propagation community detection. Mutates node.cluster."""
-    label: dict[str, str] = {n.id: n.id for n in nodes}
-    neighbors: dict[str, list[tuple[str, float]]] = {n.id: [] for n in nodes}
+def _enrich(nodes: list[KeywordNode], edges: list[KeywordEdge]) -> None:
+    """Compute communities (Louvain), influence (PageRank) and bridge
+    (betweenness) on the final graph. Mutates the nodes in place."""
+    node_ids = [n.id for n in nodes]
+    adj: dict[str, list[tuple[str, float]]] = {i: [] for i in node_ids}
     for e in edges:
-        if e.source in neighbors and e.target in neighbors:
-            neighbors[e.source].append((e.target, e.strength))
-            neighbors[e.target].append((e.source, e.strength))
+        if e.source in adj and e.target in adj:
+            adj[e.source].append((e.target, e.strength))
+            adj[e.target].append((e.source, e.strength))
 
-    order = [n.id for n in nodes]
-    for _ in range(12):
-        changed = False
-        for node_id in order:
-            nbrs = neighbors[node_id]
-            if not nbrs:
-                continue
-            tally: dict[str, float] = defaultdict(float)
-            for nid, w in nbrs:
-                tally[label[nid]] += w
-            # Heaviest neighbor-label; tie-break by smallest label id.
-            best = label[node_id]
-            best_w = -1.0
-            for lab, w in tally.items():
-                if w > best_w or (w == best_w and lab < best):
-                    best, best_w = lab, w
-            if best != label[node_id]:
-                label[node_id] = best
-                changed = True
-        if not changed:
-            break
+    clusters = analytics.louvain(node_ids, adj)
+    influence = analytics.pagerank(node_ids, adj)
+    bridge = analytics.betweenness(node_ids, adj)
 
-    # Re-index labels to small ints for stable coloring.
-    cluster_id: dict[str, int] = {}
-    nxt = 0
-    for node_id in order:
-        lab = label[node_id]
-        if lab not in cluster_id:
-            cluster_id[lab] = nxt
-            nxt += 1
     for n in nodes:
-        n.cluster = cluster_id[label[n.id]]
+        n.cluster = clusters.get(n.id, 0)
+        n.influence = influence.get(n.id, 0.0)
+        n.bridge = bridge.get(n.id, 0.0)
