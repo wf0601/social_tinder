@@ -8,6 +8,8 @@ up together in the same conversations.
 Think of it as matchmaking for topics: it surfaces which terms have chemistry,
 which cluster into communities, and which surprising pairings beat random chance.
 
+![Social Tinder — interactive keyword network with Louvain communities, significance and influence controls](sample_output.png)
+
 ---
 
 ## Two editions
